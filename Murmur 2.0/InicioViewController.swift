@@ -24,7 +24,7 @@ class InicioViewController: UITableViewController, CLLocationManagerDelegate {
     
     var defaultImageViewHeightConstraint:CGFloat = 78.0
     
-   
+    var loadedPosts = false
     
     var Murmurs = [NSDictionary]()
     
@@ -33,7 +33,50 @@ class InicioViewController: UITableViewController, CLLocationManagerDelegate {
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         userLocation = manager.location
-        //print("locations = \(userLocation.coordinate.latitude) \(userLocation.coordinate.longitude)")
+        if !loadedPosts {
+            // we need to load the posts
+            //get the logged in users details
+            self.databaseRef.child("user_profiles").child(self.loggedInUser!.uid).observeSingleEvent(of: .value) { (snapshot:FIRDataSnapshot) in
+                
+                //store the logged in users details into the variable
+                self.loggedInUserData = snapshot.value as? NSDictionary
+                
+                
+                //get all the tweets that are made by the user
+                
+                let geoFire = GeoFire(firebaseRef: FIRDatabase.database().reference().child("MurmursLocations"))
+                let query = geoFire?.query(at: self.userLocation, withRadius: 5.0)
+                print("Current user location: latitude: \(self.userLocation.coordinate.latitude), longitude: \(self.userLocation.coordinate.longitude)")
+                query?.observe(GFEventType.keyEntered, with: { (key, location) in
+                    print("Key '\(key)' entered the search area and is at location '\(location)")
+                    let actualKey = key! as String
+                    let newRef = FIRDatabase.database().reference().child("Murmurs").child(actualKey)
+                    newRef.observeSingleEvent(of: .value, with: { (snapshot) in
+                        print("appended one value")
+                        self.Murmurs.append(snapshot.value as! NSDictionary)
+                        self.InicioTableView.insertRows(at: [IndexPath(row:0,section:0)], with: UITableViewRowAnimation.automatic)
+                    })
+                    
+                })
+                
+                /*self.databaseRef.child("Murmurs").child(self.loggedInUser!.uid).observe(.childAdded, with: { (snapshot:FIRDataSnapshot) in
+                 
+                 
+                 self.Murmurs.append(snapshot.value as! NSDictionary)
+                 
+                 
+                 self.InicioTableView.insertRows(at: [IndexPath(row:0,section:0)], with: UITableViewRowAnimation.automatic)
+                 
+                 
+                 
+                 }){(error) in
+                 
+                 print(error.localizedDescription)
+                 }*/
+                
+            }
+            loadedPosts = true
+        }
     }
     
     override func viewDidLoad() {
@@ -46,47 +89,6 @@ class InicioViewController: UITableViewController, CLLocationManagerDelegate {
         locationManager.startUpdatingLocation()
         
         self.loggedInUser = FIRAuth.auth()?.currentUser
-        
-        //get the logged in users details
-        self.databaseRef.child("user_profiles").child(self.loggedInUser!.uid).observeSingleEvent(of: .value) { (snapshot:FIRDataSnapshot) in
-            
-            //store the logged in users details into the variable
-             self.loggedInUserData = snapshot.value as? NSDictionary
-           
-            
-            //get all the tweets that are made by the user
-            
-            let geoFire = GeoFire(firebaseRef: FIRDatabase.database().reference().child("MurmursLocations"))
-            let query = geoFire?.query(at: self.userLocation, withRadius: 5.0)
-            print("Current user location: latitude: \(self.userLocation.coordinate.latitude), longitude: \(self.userLocation.coordinate.longitude)")
-            query?.observe(GFEventType.keyEntered, with: { (key, location) in
-                print("Key '\(key)' entered the search area and is at location '\(location)")
-                let actualKey = key! as String
-                let newRef = FIRDatabase.database().reference().child("Murmurs").child(actualKey)
-                newRef.observeSingleEvent(of: .value, with: { (snapshot) in
-                    print("appended one value")
-                    self.Murmurs.append(snapshot.value as! NSDictionary)
-                    self.InicioTableView.insertRows(at: [IndexPath(row:0,section:0)], with: UITableViewRowAnimation.automatic)
-                })
-                
-            })
-            
-            /*self.databaseRef.child("Murmurs").child(self.loggedInUser!.uid).observe(.childAdded, with: { (snapshot:FIRDataSnapshot) in
-                
-                
-                self.Murmurs.append(snapshot.value as! NSDictionary)
-                
-                
-            self.InicioTableView.insertRows(at: [IndexPath(row:0,section:0)], with: UITableViewRowAnimation.automatic)
-                
-              
-        
-            }){(error) in
-                
-                print(error.localizedDescription)
-            }*/
-
-        }
         
         self.InicioTableView.rowHeight = UITableViewAutomaticDimension
         self.InicioTableView.estimatedRowHeight = 138
@@ -155,12 +157,14 @@ class InicioViewController: UITableViewController, CLLocationManagerDelegate {
     
     func didTapMediaInMurmur(_ sender:UITapGestureRecognizer)
         {
+            
+        self.InicioTableView.isScrollEnabled = false
         
         let imageView = sender.view as! UIImageView
         let newImageView = UIImageView(image: imageView.image)
         
         
-        newImageView.frame = self.view.frame
+        newImageView.frame = CGRect(x: 0, y: 0, width: (UIApplication.shared.keyWindow?.frame.width)!, height: (UIApplication.shared.keyWindow?.frame.height)!)
         
         newImageView.backgroundColor = UIColor.black
         newImageView.contentMode = .scaleAspectFit
@@ -172,12 +176,17 @@ class InicioViewController: UITableViewController, CLLocationManagerDelegate {
         let tap = UITapGestureRecognizer(target:self,action:#selector(self.dismissFullScreenImage))
         
         newImageView.addGestureRecognizer(tap)
-        self.view.addSubview(newImageView)
+        
+        print("Z-POSITION: \(self.navigationController?.navigationBar.layer.zPosition)")
+        self.navigationController?.navigationBar.layer.zPosition = -1
+        UIApplication.shared.keyWindow?.addSubview(newImageView)
         
     }
     
     func dismissFullScreenImage(_ sender:UITapGestureRecognizer)
     {
+        self.InicioTableView.isScrollEnabled = true
+        self.navigationController?.navigationBar.layer.zPosition = 0
         sender.view?.removeFromSuperview()
     }
 
